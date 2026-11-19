@@ -142,6 +142,13 @@ def bring_on_screen(hwnd: int) -> bool:
                                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER))
 
 
+def _ensure_visible_window() -> bool:
+    """Kept for diagnostics: a window hidden to the tray has no usable UIA tree, and re-showing it
+    does NOT rebuild the subtree - only restarting WeChat does. Do not call this from the watcher."""
+    hwnd = find_wechat_window()
+    return bool(hwnd and _user32.IsWindowVisible(hwnd))
+
+
 def wechat_focused() -> bool:
     try:
         hwnd = _user32.GetForegroundWindow()
@@ -242,9 +249,18 @@ def read_sessions() -> list[dict]:
     try:
         cells = table.GetChildren()
     except Exception:
+        cells = []
+    if not cells:
+        # stale element after WeChat rebuilt its window (tray -> reopen)
         global _table
         _table = None
-        return []
+        table = _session_table()
+        if table is None:
+            return []
+        try:
+            cells = table.GetChildren()
+        except Exception:
+            return []
     for cell in cells:
         try:
             item = parse_cell(cell.Name)
@@ -369,7 +385,7 @@ class ChatListWatcher(threading.Thread):
                     gate.ensure_gate()
                     cls, ready, _hwnd = gate.gate_state()
                 if not ready:
-                    self._set_status("微信控件树未打开")
+                    self._set_status("微信控件树未打开（若刚从托盘打开过微信，请重启微信一次）")
                     time.sleep(2)
                     continue
             sessions = read_sessions()
