@@ -37,7 +37,7 @@ SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 7
 _TIME_RE = re.compile(
     r"^(?:(?:昨天|今天|前天|星期[一二三四五六日天]|周[一二三四五六日天])?\s*\d{1,2}[:：]\d{2}"
     r"|昨天|今天|前天|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|\d{2}/\d{1,2})$")
-_UNREAD_RE = re.compile(r"\[(\d+)条\]")
+_UNREAD_RE = re.compile(r"\[(\d+)\+?条\]")
 _FLAGS = {"已置顶", "消息免打扰"}
 
 
@@ -385,12 +385,10 @@ class ChatListWatcher(threading.Thread):
                     self._prev[key] = (s["unread"], s["preview"])
                     continue
                 old_unread, old_preview = prev
-                new_msg = False
-                if s["unread"] > old_unread:
-                    new_msg = True
-                elif s["unread"] == 0 and old_unread == 0 and s["preview"] != old_preview:
-                    # muted chats expose a dot instead of a counter - fall back to the text
-                    new_msg = bool(s["preview"]) and not s["preview"].startswith(("我：", "我:", "你：", "你:"))
+                # Only a rising unread counter proves an incoming message. WeChat keeps a chat
+                # at 0 unread while you are talking in it, so "preview changed" would also fire
+                # for every message you send yourself (typed here or on the phone).
+                new_msg = s["unread"] > old_unread
                 self._prev[key] = (s["unread"], s["preview"])
                 if new_msg and self._seeded:
                     sender, content = _split_sender(s["name"], s["preview"])
