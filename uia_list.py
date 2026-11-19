@@ -143,10 +143,17 @@ def bring_on_screen(hwnd: int) -> bool:
 
 
 def _ensure_visible_window() -> bool:
-    """Kept for diagnostics: a window hidden to the tray has no usable UIA tree, and re-showing it
-    does NOT rebuild the subtree - only restarting WeChat does. Do not call this from the watcher."""
+    """WeChat hidden to the tray kills both the UIA tree and the gate byte. Showing it again
+    (without focus) and parking it off-screen brings the tree back - the user never sees it."""
     hwnd = find_wechat_window()
-    return bool(hwnd and _user32.IsWindowVisible(hwnd))
+    if not hwnd:
+        return False
+    if _user32.IsWindowVisible(hwnd):
+        return True
+    _user32.ShowWindow(hwnd, 4)          # SW_SHOWNOACTIVATE
+    time.sleep(0.3)
+    park_offscreen(hwnd)
+    return bool(_user32.IsWindowVisible(hwnd))
 
 
 def wechat_focused() -> bool:
@@ -378,6 +385,11 @@ class ChatListWatcher(threading.Thread):
                 time.sleep(2)
                 continue
             cls, ready, _hwnd = gate.gate_state()
+            if not ready:
+                # hidden to the tray: the tree and the gate byte are both gone. Show it off-screen
+                # and rewrite the byte - verified to restore all sessions without the user seeing it.
+                if _ensure_visible_window():
+                    cls, ready, _hwnd = gate.gate_state()
             if not ready:
                 if time.time() - self._last_gate > _GATE_RETRY:
                     self._last_gate = time.time()
